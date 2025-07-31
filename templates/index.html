@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fish Classifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🐟 Fish Classifier</h1>
+        <p>Upload an image of a fish, and we'll tell you what kind it is!</p>
+
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required>
+            <button type="submit">Classify</button>
+        </form>
+
+        {% if prediction %}
+            <div class="result">
+                <h2>Prediction: <span>{{ prediction }}</span></h2>
+                <img src="{{ img_path }}" alt="Uploaded Fish">
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>
