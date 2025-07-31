@@ -1,16 +1,19 @@
-from flask import Flask, render_template, request
-from tensorflow.keras.preprocessing import image
+import streamlit as st
 import numpy as np
-import os
 import tensorflow as tf
+from PIL import Image
+import os
 
-app = Flask(__name__)
+# Load TFLite model once and cache it
+@st.cache_resource
+def load_tflite_model():
+    interpreter = tf.lite.Interpreter(model_path="model/fish_classifier.tflite")
+    interpreter.allocate_tensors()
+    return interpreter
 
-# Load TFLite model
-interpreter = tf.lite.Interpreter(model_path="model/fish_classifier.tflite")
-interpreter.allocate_tensors()
+interpreter = load_tflite_model()
 
-# Get input and output tensors
+# Get input/output details
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
@@ -22,45 +25,37 @@ class_names = ['Bangus', 'Big Head Carp', 'Black Spotted Barb', 'Catfish', 'Clim
                'Mudfish', 'Mullet', 'Pangasius', 'Perch', 'Scat Fish', 'Silver Barb', 'Silver Carp',
                'Silver Perch', 'Snakehead', 'Tenpounder', 'Tilapia']
 
-def prepare_image(img_path):
-    img = image.load_img(img_path, target_size=(224, 224))
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)
-    img_array = img_array / 255.0
-    return img_array.astype(np.float32)  # Make sure dtype matches model input
+# Preprocess function
+def prepare_image(uploaded_image):
+    img = uploaded_image.resize((224, 224))
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0).astype(np.float32)
+    return img_array
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        file = request.files["file"]
-        if file:
-            file_path = os.path.join("static", file.filename)
-            file.save(file_path)
+# UI
+st.set_page_config(page_title="Fish Classifier", page_icon="🐟")
+st.title("🐟 Fish Classifier")
+st.write("Upload an image of a fish to classify its species.")
 
-            img_array = prepare_image(file_path)
+uploaded_file = st.file_uploader("Choose a fish image...", type=["jpg", "png", "jpeg"])
 
-            interpreter.set_tensor(input_details[0]['index'], img_array)
-            interpreter.invoke()
-            output_data = interpreter.get_tensor(output_details[0]['index'])
+if uploaded_file:
+    img = Image.open(uploaded_file)
+    img_array = prepare_image(img)
 
-            # Get prediction and confidence
-            prediction_scores = output_data[0]
-            max_score = np.max(prediction_scores)
-            predicted_index = np.argmax(prediction_scores)
-            confidence = round(float(max_score) * 100, 2)  # Convert to percentage
+    interpreter.set_tensor(input_details[0]['index'], img_array)
+    interpreter.invoke()
+    output_data = interpreter.get_tensor(output_details[0]['index'])
 
-            if max_score >= 0.5:
-                predicted_class = class_names[predicted_index]
-            else:
-                predicted_class = "No fish detected"
-                confidence = None
+    prediction_scores = output_data[0]
+    max_score = np.max(prediction_scores)
+    predicted_index = np.argmax(prediction_scores)
+    confidence = round(float(max_score) * 100, 2)
 
-            return render_template("index.html", prediction=predicted_class, confidence=confidence, img_path=file_path)
-
-    return render_template("index.html", prediction=None, confidence=None)
-
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host="0.0.0.0", port=port)
+    if max_score >= 0.5:
+        predicted_class = class_names[predicted_index]
+        st.success(f"Prediction: {predicted_class}")
+        st.info(f"Confidence: {confidence}%")
+        st.image(img, caption="Uploaded Image", use_container_width=True)
+    else:
+        st.error("No fish detected (confidence below 50%)")
